@@ -1,0 +1,78 @@
+version: "3.9"
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  NeuroLearn AI – Docker Compose
+# ══════════════════════════════════════════════════════════════════════════════
+
+services:
+  # ── PostgreSQL 16 ──────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-neurolearn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-neurolearn}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-neurolearn} -d ${POSTGRES_DB:-neurolearn}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── ML Service (FastAPI + XGBoost + SHAP) ──────────────────────────────────
+  ml-service:
+    build:
+      context: .
+      dockerfile: ml-service/Dockerfile
+    restart: unless-stopped
+    environment:
+      ML_API_KEY: ${ML_API_KEY}
+      MODEL_PATH: ${MODEL_PATH:-models/model_v1.joblib}
+      GRAPH_PATH: ${GRAPH_PATH:-data/graph.json}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ml-service:/app
+      - ./data:/app/data:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/ml/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    profiles:
+      - full
+
+  # ── Backend (Node/Express) ─────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://neurolearn:changeme@db:5432/neurolearn}
+      JWT_SECRET: ${JWT_SECRET}
+      ML_SERVICE_URL: ${ML_SERVICE_URL:-http://ml-service:8000}
+      ML_API_KEY: ${ML_API_KEY}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      PREDICTION_CACHE_MINUTES: ${PREDICTION_CACHE_MINUTES:-15}
+      PORT: 3001
+      NODE_ENV: ${NODE_ENV:-development}
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - full
+
+volumes:
+  pgdata:
+    name: neurolearn_pgdata

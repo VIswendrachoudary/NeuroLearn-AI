@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Phase 0: Graph validation (grows each phase) ───────────────────────────
+  graph:
+    name: Validate knowledge graph
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install graph dependencies
+        run: pip install networkx
+
+      - name: Check data files exist
+        run: |
+          test -f data/concepts.json   || echo "WARN: data/concepts.json not found (expected after Phase 1)"
+          test -f data/prerequisites.json || echo "WARN: data/prerequisites.json not found (expected after Phase 1)"
+          test -f data/resources.json  || echo "WARN: data/resources.json not found (expected after Phase 1)"
+
+      - name: Run graph validator (when present)
+        run: |
+          if [ -f scripts/validate_graph.py ]; then
+            python scripts/validate_graph.py
+          else
+            echo "INFO: scripts/validate_graph.py not yet present – skipping (Phase 1 task)"
+          fi
+
+  # ── Future jobs (uncomment as phases complete) ─────────────────────────────
+  # ml-tests:
+  #   name: ML service tests
+  #   runs-on: ubuntu-latest
+  #   steps: ...
+
+  # backend-tests:
+  #   name: Backend tests
+  #   runs-on: ubuntu-latest
+  #   services:
+  #     postgres:
+  #       image: postgres:16-alpine
+  #       ...
+
+  # e2e:
+  #   name: Playwright end-to-end
+  #   runs-on: ubuntu-latest
+  #   needs: [ml-tests, backend-tests]
+  #   steps: ...
